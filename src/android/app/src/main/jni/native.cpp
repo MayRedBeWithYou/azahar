@@ -52,7 +52,6 @@
 #include "jni/camera/still_image_camera.h"
 #include "jni/config.h"
 #include "network/announce_multiplayer_session.h"
-
 #ifdef ENABLE_OPENGL
 #include "jni/emu_window/emu_window_gl.h"
 #endif
@@ -72,7 +71,6 @@
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
 #include "multiplayer.h"
-
 
 namespace {
 

@@ -40,7 +40,6 @@ import androidx.work.WorkManager
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.launch
-import org.citra.citra_emu.BuildConfig
 import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
 import org.citra.citra_emu.contracts.OpenFileResultContract
