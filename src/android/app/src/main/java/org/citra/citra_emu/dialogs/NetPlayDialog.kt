@@ -21,6 +21,7 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.citra.citra_emu.CitraApplication
+import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.R
 import org.citra.citra_emu.databinding.DialogMultiplayerConnectBinding
 import org.citra.citra_emu.databinding.DialogMultiplayerLobbyBinding
@@ -269,10 +270,23 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
                     gameNameList.map { it[0] }
                 )
             )
+            // Default to running game if available
+            if (isCreateRoom && NativeLibrary.isRunning()) {
+                val runningTitleId = NativeLibrary.getRunningTitleId()
+                if (runningTitleId != 0L) {
+                    val index = gameIdList.indexOfFirst { it[0] == runningTitleId }
+                    if (index != -1) {
+                        setText(gameNameList[index][0], false)
+                    }
+                }
+            }
         }
 
         binding.preferedGameName.visibility = if (isCreateRoom) View.VISIBLE else View.GONE
         binding.roomName.visibility = if (isCreateRoom) View.VISIBLE else View.GONE
+        if (isCreateRoom) {
+            binding.roomName.setText(activity.getString(R.string.multiplayer_default_room_name, NetPlayManager.getUsername(activity)))
+        }
         binding.maxPlayersContainer.visibility = if (isCreateRoom) View.VISIBLE else View.GONE
         binding.maxPlayersLabel.text = context.getString(R.string.multiplayer_max_players_value, binding.maxPlayers.value.toInt())
 
@@ -288,7 +302,11 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
             val username = binding.username.text.toString()
             val portStr = binding.ipPort.text.toString()
             val preferedGameName = binding.dropdownPreferedGameName.text.toString()
-            val preferedGameId = gameIdList[gameNameList.indexOfFirst { it[0] == preferedGameName }][0]
+            val preferedGameId = if (gameNameList.indexOfFirst { it[0] == preferedGameName } != -1) {
+                gameIdList[gameNameList.indexOfFirst { it[0] == preferedGameName }][0]
+            } else {
+                0L
+            }
             val password = binding.password.text.toString()
             val port = portStr.toIntOrNull() ?: run {
                 Toast.makeText(activity, R.string.multiplayer_port_invalid, Toast.LENGTH_LONG).show()
@@ -313,7 +331,7 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
                 return@setOnClickListener
             }
 
-            if (ipAddress.length < 7 || username.length < 5) {
+            if (ipAddress.length < 7 || username.length < 3) {
                 Toast.makeText(activity, R.string.multiplayer_input_invalid, Toast.LENGTH_LONG).show()
                 binding.btnConfirm.isEnabled = true
                 binding.btnConfirm.text = activity.getString(R.string.original_button_text)

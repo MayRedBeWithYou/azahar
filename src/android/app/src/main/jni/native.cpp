@@ -806,6 +806,13 @@ jboolean Java_org_citra_citra_1emu_NativeLibrary_onGamePadEvent([[maybe_unused]]
     return static_cast<jboolean>(consumed);
 }
 
+jstring Java_org_citra_citra_1emu_NativeLibrary_getSystemUsername(JNIEnv* env,
+                                                                  [[maybe_unused]] jobject obj) {
+    auto& system = Core::System::GetInstance();
+    auto username = Service::CFG::GetModule(system)->GetUsername();
+    return ToJString(env, Common::UTF16ToUTF8(username));
+}
+
 jboolean Java_org_citra_citra_1emu_NativeLibrary_onGamePadMoveEvent(
     [[maybe_unused]] JNIEnv* env, [[maybe_unused]] jobject obj, [[maybe_unused]] jstring j_device,
     jint axis, jfloat x, jfloat y) {
