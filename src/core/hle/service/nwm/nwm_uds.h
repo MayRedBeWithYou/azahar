@@ -448,6 +448,18 @@ private:
      */
     void DecryptBeaconData(Kernel::HLERequestContext& ctx);
 
+    /**
+     * NWM_UDS::SetProbeResponseParam service function.
+     * Sets the probe response parameters for the network.
+     *  Inputs:
+     *      1 : Probe OUI
+     *      2 : Probe data
+     *  Outputs:
+     *      0 : Return header
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void SetProbeResponseParam(Kernel::HLERequestContext& ctx);
+
     ResultVal<std::shared_ptr<Kernel::Event>> Initialize(
         u32 sharedmem_size, const NodeInfo& node, u16 version,
         std::shared_ptr<Kernel::SharedMemory> sharedmem);
@@ -586,6 +598,9 @@ private:
 
     // List of the last <MaxBeaconFrames> beacons received from the network.
     std::list<Network::WifiPacket> received_beacons;
+
+    u32 probe_oui = 0;
+    u8 probe_data = 0;
 
     template <class Archive>
     void serialize(Archive& ar, const unsigned int);
