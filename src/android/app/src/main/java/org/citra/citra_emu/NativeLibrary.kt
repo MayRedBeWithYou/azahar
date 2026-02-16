@@ -25,9 +25,12 @@ import androidx.fragment.app.DialogFragment
 import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.citra.citra_emu.activities.EmulationActivity
+import org.citra.citra_emu.utils.BuildUtil
 import org.citra.citra_emu.utils.FileUtil
 import org.citra.citra_emu.utils.Log
 import org.citra.citra_emu.utils.NetPlayManager
+import org.citra.citra_emu.utils.RemovableStorageHelper
+import org.citra.citra_emu.viewmodel.CompressProgressDialogViewModel
 import java.lang.ref.WeakReference
 import java.util.Date
 
@@ -647,26 +650,6 @@ object NativeLibrary {
     fun onCompressProgress(total: Long, current: Long) {
         CompressProgressDialogViewModel.update(total, current)
     }
-
-    @Keep
-    @JvmStatic
-    fun addNetPlayMessage(type: Int, message: String) {
-        val emulationActivity = sEmulationActivity.get()
-        if (emulationActivity != null) {
-            emulationActivity.addNetPlayMessages(type, message)
-        }
-        else {
-            NetPlayManager.addNetPlayMessage(type, message)
-        }
-    }
-
-    @Keep
-    @JvmStatic
-    fun clearChat() {
-        NetPlayManager.clearChat()
-    }
-
-    external fun initMultiplayer()
 
     @Keep
     @JvmStatic

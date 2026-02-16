@@ -1498,8 +1498,7 @@ void NWM_UDS::BeaconBroadcastCallback(std::uintptr_t user_data, s64 cycles_late)
     if (connection_status.status != NetworkStatus::ConnectedAsHost)
         return;
 
-    std::vector<u8> frame =
-        GenerateBeaconFrame(network_info, node_info, probe_oui, probe_data);
+    std::vector<u8> frame = GenerateBeaconFrame(network_info, node_info, probe_oui, probe_data);
 
     using Network::WifiPacket;
     WifiPacket packet;

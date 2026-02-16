@@ -159,8 +159,7 @@ void ThreadManager::SwitchContext(Thread* new_thread) {
         } else if (new_thread->status != ThreadStatus::Ready) {
             // Thread changed status due to a race condition (e.g. network callback).
             // Put it back in the ready queue so it's not lost, then skip this switch
-            LOG_WARNING(Kernel,
-                        "Thread {} status changed to {} during scheduling, re-enqueueing.",
+            LOG_WARNING(Kernel, "Thread {} status changed to {} during scheduling, re-enqueueing.",
                         new_thread->GetObjectId(), static_cast<u32>(new_thread->status));
             ready_queue.push_back(new_thread->current_priority, new_thread);
             return;
