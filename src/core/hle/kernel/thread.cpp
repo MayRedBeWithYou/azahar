@@ -131,6 +131,33 @@ void Thread::Stop() {
     }
 }
 
+const char* GetThreadStatusName(ThreadStatus status) {
+    switch (status) {
+    case ThreadStatus::Running:
+        return "Running";
+    case ThreadStatus::Ready:
+        return "Ready";
+    case ThreadStatus::WaitArb:
+        return "WaitArb";
+    case ThreadStatus::WaitSleep:
+        return "WaitSleep";
+    case ThreadStatus::WaitIPC:
+        return "WaitIPC";
+    case ThreadStatus::WaitSynchAny:
+        return "WaitSynchAny";
+    case ThreadStatus::WaitSynchAll:
+        return "WaitSynchAll";
+    case ThreadStatus::WaitHleEvent:
+        return "WaitHleEvent";
+    case ThreadStatus::Dormant:
+        return "Dormant";
+    case ThreadStatus::Dead:
+        return "Dead";
+    default:
+        return "Unknown";
+    }
+}
+
 void ThreadManager::SwitchContext(Thread* new_thread) {
     Thread* previous_thread = GetCurrentThread();
     std::shared_ptr<Process> previous_process = nullptr;
@@ -160,7 +187,7 @@ void ThreadManager::SwitchContext(Thread* new_thread) {
             // Thread changed status due to a race condition (e.g. network callback).
             // Put it back in the ready queue so it's not lost, then skip this switch
             LOG_WARNING(Kernel, "Thread {} status changed to {} during scheduling, re-enqueueing.",
-                        new_thread->GetObjectId(), static_cast<u32>(new_thread->status));
+                        new_thread->GetObjectId(), GetThreadStatusName(new_thread->status));
             ready_queue.push_back(new_thread->current_priority, new_thread);
             return;
         }
