@@ -150,12 +150,15 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
                 binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_searching)
             }
 
-            override fun onConnecting() {
-                binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_connecting)
+            override fun onConnecting(peerName: String) {
+                binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_connecting, peerName)
             }
 
-            override fun onSettingUp() {
-                binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_setting_up)
+            override fun onSettingUp(isHost: Boolean) {
+                binding.textStatus.text = activity.getString(
+                    if (isHost) R.string.multiplayer_wifi_direct_setting_up_host
+                    else R.string.multiplayer_wifi_direct_setting_up_client
+                )
             }
 
             override fun onSuccess(isHost: Boolean) {

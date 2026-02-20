@@ -91,6 +91,7 @@ class EmulationActivity : AppCompatActivity() {
         ThemeUtil.setTheme(this)
         settingsViewModel.settings.loadSettings()
         super.onCreate(savedInstanceState)
+        NativeLibrary.initMultiplayer()
         secondaryDisplay = SecondaryDisplay(this)
         secondaryDisplay.updateDisplay()
 

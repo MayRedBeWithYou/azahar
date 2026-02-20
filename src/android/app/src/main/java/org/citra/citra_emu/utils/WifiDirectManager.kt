@@ -28,8 +28,8 @@ class WifiDirectManager(private val activity: Activity) {
 
     interface Listener {
         fun onSearching()
-        fun onConnecting()
-        fun onSettingUp()
+        fun onConnecting(peerName: String)
+        fun onSettingUp(isHost: Boolean)
         fun onSuccess(isHost: Boolean)
         fun onError(message: String)
     }
@@ -227,7 +227,7 @@ class WifiDirectManager(private val activity: Activity) {
             "status=${deviceStatusName(device.status)}, isGroupOwner=${device.isGroupOwner}")
         Log.debug("[WifiDirectManager] connectToPeer: ${stateSnapshot()}")
         isConnecting = true
-        listener?.onConnecting()
+        listener?.onConnecting(device.deviceName ?: "another device")
         val intent = if (device.isGroupOwner) 0 else Random.nextInt(0, 16)
         Log.debug("[WifiDirectManager] connectToPeer: groupOwnerIntent=$intent (forced 0 because target isGroupOwner=${device.isGroupOwner})")
         val config = WifiP2pConfig().apply {
@@ -277,7 +277,7 @@ class WifiDirectManager(private val activity: Activity) {
         isComplete = true
         cancelConnectionTimeout()
         Log.info("[WifiDirectManager] Group formed — isGroupOwner=$isGroupOwner, ownerAddress=$groupOwnerAddress")
-        listener?.onSettingUp()
+        listener?.onSettingUp(isGroupOwner)
 
         val pendingListener = listener
         val port = DEFAULT_PORT
@@ -428,7 +428,7 @@ class WifiDirectManager(private val activity: Activity) {
                                 if (shouldWaitForPeer(peer)) {
                                     Log.info("[WifiDirectManager] Tiebreaker: waiting passively for peer '${peer.deviceName}' to initiate")
                                     isConnecting = true
-                                    listener?.onConnecting()
+                                    listener?.onConnecting(peer.deviceName ?: "another device")
                                     scheduleConnectionTimeout()
                                 } else {
                                     Log.info("[WifiDirectManager] Tiebreaker: we initiate — scheduling connect in ${PEER_CONNECT_DELAY_MS}ms")
@@ -476,7 +476,7 @@ class WifiDirectManager(private val activity: Activity) {
                                     timeoutHandler.postDelayed(::retryDiscovery, RETRY_DELAY_MS)
                                 } else {
                                     Log.warning("[WifiDirectManager] Connection dropped before group formed, retrying connect to cached peer '${cachedPeer.deviceName}' ($retryCount/$MAX_RETRIES)")
-                                    listener?.onConnecting()
+                                    listener?.onConnecting(cachedPeer.deviceName ?: "another device")
                                     timeoutHandler.postDelayed({ connectToPeer(cachedPeer) }, RETRY_DELAY_MS)
                                 }
                             } else {
