@@ -76,7 +76,10 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
             else -> {
                 DialogMultiplayerConnectBinding.inflate(layoutInflater).apply {
                     setContentView(root)
-                    // Prepare the game list in case a user tries to create a room
+                    // Prepare the game list in case a user tries to create a room.
+                    // Always seed with a "None" option first so the dropdown is never empty.
+                    gameNameList.add(arrayOf(context.getString(R.string.multiplayer_no_preferred_game)))
+                    gameIdList.add(arrayOf(-1L))
                     for (game in GameHelper.cachedGameList) {
                         val gameName = game.title
                         if (gameNameList.none { it[0] == gameName }) {
@@ -336,15 +339,17 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
                     gameNameList.map { it[0] }
                 )
             )
-            // Default to running game if available
-            if (isCreateRoom && NativeLibrary.isRunning()) {
-                val runningTitleId = NativeLibrary.getRunningTitleId()
-                if (runningTitleId != 0L) {
-                    val index = gameIdList.indexOfFirst { it[0] == runningTitleId }
-                    if (index != -1) {
-                        setText(gameNameList[index][0], false)
+            if (isCreateRoom) {
+                // Default to the running game if it is in the cached list, otherwise "None".
+                var selectedIndex = 0 // index 0 is always "None"
+                if (NativeLibrary.isRunning()) {
+                    val runningTitleId = NativeLibrary.getRunningTitleId()
+                    if (runningTitleId != 0L) {
+                        val idx = gameIdList.indexOfFirst { it[0] == runningTitleId }
+                        if (idx != -1) selectedIndex = idx
                     }
                 }
+                setText(gameNameList[selectedIndex][0], false)
             }
         }
 
@@ -368,10 +373,10 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
             val username = binding.username.text.toString()
             val portStr = binding.ipPort.text.toString()
             val preferedGameName = binding.dropdownPreferedGameName.text.toString()
-            val preferedGameId = if (gameNameList.indexOfFirst { it[0] == preferedGameName } != -1) {
-                gameIdList[gameNameList.indexOfFirst { it[0] == preferedGameName }][0]
-            } else {
-                0L
+            val preferedGameId = run {
+                val index = gameNameList.indexOfFirst { it[0] == preferedGameName }
+                val id = if (index != -1) gameIdList[index][0] else -1L
+                if (id == -1L) 0L else id  // convert "None" sentinel to 0 (no preference)
             }
             val password = binding.password.text.toString()
             val port = portStr.toIntOrNull() ?: run {
