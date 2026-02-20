@@ -306,7 +306,7 @@ std::vector<u8> GenerateNintendoProbeTag(u32 probe_oui, u8 probe_data) {
     ProbeTag tag{};
     tag.header.tag_id = static_cast<u8>(TagId::VendorSpecific);
     tag.header.length = sizeof(ProbeTag) - sizeof(TagHeader);
-    tag.oui_type = static_cast<u8>(NintendoTagId::Probe);
+    tag.oui_type = static_cast<u8>((probe_oui >> 24) & 0xFF);
 
     tag.oui[0] = static_cast<u8>((probe_oui >> 16) & 0xFF);
     tag.oui[1] = static_cast<u8>((probe_oui >> 8) & 0xFF);
@@ -336,10 +336,10 @@ std::vector<u8> GenerateNintendoTaggedParameters(const NetworkInfo& network_info
     std::vector<u8> first_data_tag = GenerateNintendoFirstEncryptedDataTag(network_info, nodes);
     std::vector<u8> second_data_tag = GenerateNintendoSecondEncryptedDataTag(network_info, nodes);
 
-    buffer.insert(buffer.begin(), probe_tag.begin(), probe_tag.end());
     buffer.insert(buffer.end(), network_info_tag.begin(), network_info_tag.end());
     buffer.insert(buffer.end(), first_data_tag.begin(), first_data_tag.end());
     buffer.insert(buffer.end(), second_data_tag.begin(), second_data_tag.end());
+    buffer.insert(buffer.end(), probe_tag.begin(), probe_tag.end());
 
     return buffer;
 }

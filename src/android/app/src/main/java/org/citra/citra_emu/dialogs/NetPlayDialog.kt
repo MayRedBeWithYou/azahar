@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.PopupMenu
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -26,6 +27,7 @@ import org.citra.citra_emu.R
 import org.citra.citra_emu.databinding.DialogMultiplayerConnectBinding
 import org.citra.citra_emu.databinding.DialogMultiplayerLobbyBinding
 import org.citra.citra_emu.databinding.DialogMultiplayerRoomBinding
+import org.citra.citra_emu.databinding.DialogWifiDirectSearchingBinding
 import org.citra.citra_emu.databinding.ItemBanListBinding
 import org.citra.citra_emu.databinding.ItemButtonNetplayBinding
 import org.citra.citra_emu.databinding.ItemTextNetplayBinding
@@ -33,6 +35,7 @@ import org.citra.citra_emu.dialogs.ChatDialog
 import org.citra.citra_emu.utils.CompatUtils
 import org.citra.citra_emu.utils.GameHelper
 import org.citra.citra_emu.utils.NetPlayManager
+import org.citra.citra_emu.utils.WifiDirectManager
 
 class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
     private lateinit var adapter: NetPlayAdapter
@@ -94,13 +97,76 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
                         showNetPlayInputDialog(false)
                         dismiss()
                     }
-                    btnLobbyBrowser.setOnClickListener {
-                        LobbyBrowser(context).show()
+                    btnWifiDirect.setOnClickListener {
+                        showWifiDirectDialog()
                         dismiss()
                     }
                 }
             }
         }
+    }
+
+    private fun showWifiDirectDialog() {
+        val activity = CompatUtils.findActivity(context)
+        val wifiDirectManager = WifiDirectManager(activity)
+
+        if (!wifiDirectManager.hasPermission()) {
+            ActivityCompat.requestPermissions(
+                activity,
+                wifiDirectManager.getRequiredPermissions(),
+                0
+            )
+            Toast.makeText(context, R.string.multiplayer_wifi_direct_permission_needed, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val dialog = BottomSheetDialog(activity)
+        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        dialog.behavior.skipCollapsed = true
+        dialog.setCancelable(false)
+
+        val binding = DialogWifiDirectSearchingBinding.inflate(LayoutInflater.from(activity))
+        dialog.setContentView(binding.root)
+
+        var connectionSucceeded = false
+
+        wifiDirectManager.listener = object : WifiDirectManager.Listener {
+            override fun onSearching() {
+                binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_searching)
+            }
+
+            override fun onConnecting() {
+                binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_connecting)
+            }
+
+            override fun onSettingUp() {
+                binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_setting_up)
+            }
+
+            override fun onSuccess(isHost: Boolean) {
+                connectionSucceeded = true
+                dialog.dismiss()
+                Toast.makeText(
+                    CitraApplication.appContext,
+                    if (isHost) R.string.multiplayer_create_room_success else R.string.multiplayer_join_room_success,
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+            override fun onError(message: String) {
+                dialog.dismiss()
+                Toast.makeText(CitraApplication.appContext, message, Toast.LENGTH_LONG).show()
+            }
+        }
+
+        binding.btnCancel.setOnClickListener { dialog.dismiss() }
+        // Only tear down the WiFi Direct group on cancel/error. On success the group must stay
+        // alive because the multiplayer session runs over it.
+        dialog.setOnDismissListener { if (!connectionSucceeded) wifiDirectManager.stop() }
+
+        dialog.show()
+        wifiDirectManager.startDiscovery()
     }
 
     data class NetPlayItems(

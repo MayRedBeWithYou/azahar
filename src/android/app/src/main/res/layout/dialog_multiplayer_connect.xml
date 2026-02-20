@@ -48,12 +48,12 @@
                 android:layout_height="match_parent" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_lobby_browser"
+                android:id="@+id/btn_wifi_direct"
+                android:text="@string/multiplayer_wifi_direct"
                 style="@style/Widget.Material3.Button"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/multiplayer_public_room"
                 app:cornerRadius="16dp"
                 app:icon="@drawable/ic_search" />
 

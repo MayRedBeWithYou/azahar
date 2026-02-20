@@ -929,6 +929,7 @@
     <string name="multiplayer_create_room">Create</string>
     <string name="multiplayer_join_room">Join</string>
     <string name="multiplayer_public_room">Browse Public Rooms</string>
+    <string name="multiplayer_wifi_direct">Wi-Fi Direct</string>
     <string name="multiplayer_username">Username</string>
     <string name="multiplayer_ip_address">IP Address</string>
     <string name="multiplayer_ip_port">Port</string>
@@ -1005,6 +1006,12 @@
     <string name="multiplayer_no_game">No Games Found</string>
     <string name="multiplayer_prefered_game_name_invalid">You must choose a Preferred Application to host a room.</string>
     <string name="multiplayer_default_room_name">%1$s\'s Room</string>
+    <string name="multiplayer_wifi_direct_searching">Searching for peers…</string>
+    <string name="multiplayer_wifi_direct_connecting">Connecting…</string>
+    <string name="multiplayer_wifi_direct_setting_up">Setting up room…</string>
+    <string name="multiplayer_wifi_direct_error">Wi-Fi Direct connection failed</string>
+    <string name="multiplayer_wifi_direct_not_supported">Wi-Fi Direct is not supported on this device</string>
+    <string name="multiplayer_wifi_direct_permission_needed">Wi-Fi permission required. Please grant it and try again.</string>
 
     <!-- File Compression -->
     <string name="compress">Compress</string>
