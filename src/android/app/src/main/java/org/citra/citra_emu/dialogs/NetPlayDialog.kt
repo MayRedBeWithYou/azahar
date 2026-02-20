@@ -42,6 +42,13 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
     private val gameNameList: MutableList<Array<String>> = mutableListOf()
     private val gameIdList: MutableList<Array<Long>> = mutableListOf()
 
+    companion object {
+        // Kept alive across NetPlayDialog instances: the Wi-Fi Direct group must remain up
+        // for the duration of the multiplayer session, which outlasts the connection dialog.
+        // Cleared (and the group torn down) when the user leaves the lobby.
+        private var activeWifiDirectManager: WifiDirectManager? = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -59,6 +66,8 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
                     adapter.loadMultiplayerMenu()
                     btnLeave.setOnClickListener {
                         NetPlayManager.netPlayLeaveRoom()
+                        activeWifiDirectManager?.stop()
+                        activeWifiDirectManager = null
                         dismiss()
                     }
                     btnChat.setOnClickListener {
@@ -111,7 +120,9 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
 
     private fun showWifiDirectDialog() {
         val activity = CompatUtils.findActivity(context)
+        activeWifiDirectManager?.stop()  // clean up any stale group from a previous session
         val wifiDirectManager = WifiDirectManager(activity)
+        activeWifiDirectManager = wifiDirectManager
 
         if (!wifiDirectManager.hasPermission()) {
             ActivityCompat.requestPermissions(
@@ -164,9 +175,15 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
         }
 
         binding.btnCancel.setOnClickListener { dialog.dismiss() }
-        // Only tear down the WiFi Direct group on cancel/error. On success the group must stay
-        // alive because the multiplayer session runs over it.
-        dialog.setOnDismissListener { if (!connectionSucceeded) wifiDirectManager.stop() }
+        // On cancel/error: tear down the group immediately and clear the reference.
+        // On success: leave the group alive — the multiplayer session runs over it.
+        //             The reference is kept in activeWifiDirectManager until the lobby is left.
+        dialog.setOnDismissListener {
+            if (!connectionSucceeded) {
+                wifiDirectManager.stop()
+                activeWifiDirectManager = null
+            }
+        }
 
         dialog.show()
         wifiDirectManager.startDiscovery()
