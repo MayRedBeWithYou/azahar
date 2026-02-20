@@ -166,7 +166,8 @@ class WifiDirectManager(private val activity: Activity) {
             deviceAddress = device.deviceAddress
             // Randomize intent so simultaneous connects resolve deterministically via spec tiebreaker
             // rather than relying on firmware behaviour. The device with higher intent becomes the GO.
-            groupOwnerIntent = Random.nextInt(0, 16)
+            // Force 0 when the target is already a GO so we unambiguously join as a client.
+            groupOwnerIntent = if (device.isGroupOwner) 0 else Random.nextInt(0, 16)
         }
         manager?.connect(channel ?: return, config, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
@@ -243,12 +244,17 @@ class WifiDirectManager(private val activity: Activity) {
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                     if (isConnecting) return
                     manager?.requestPeers(channel ?: return) { peerList ->
-                        val peer = peerList.deviceList.firstOrNull() ?: return@requestPeers
-                        Log.debug("[WifiDirectManager] Peers changed: ${peerList.deviceList.size} peer(s) found")
-                        // Small random delay to desynchronize simultaneous connect attempts.
-                        // If the other device fires first, we will receive onFailure(BUSY) and
-                        // wait passively for the group to form rather than causing a collision.
-                        val delay = Random.nextLong(0, CONNECT_JITTER_MS)
+                        // Prefer an existing Group Owner so that a 3rd device joins the
+                        // already-formed group rather than creating a separate one with a GC.
+                        val peer = peerList.deviceList.firstOrNull { it.isGroupOwner }
+                            ?: peerList.deviceList.firstOrNull()
+                            ?: return@requestPeers
+                        Log.debug("[WifiDirectManager] Peers changed: ${peerList.deviceList.size} peer(s) found, " +
+                            "selected ${peer.deviceName} (isGroupOwner=${peer.isGroupOwner}, status=${peer.status})")
+                        // Skip jitter when the target is already a GO — no collision race is
+                        // possible. Apply jitter otherwise to desync simultaneous first-connect
+                        // attempts where both devices are racing to become GO.
+                        val delay = if (peer.isGroupOwner) 0L else Random.nextLong(0, CONNECT_JITTER_MS)
                         timeoutHandler.postDelayed({
                             if (!isConnecting && !isComplete) connectToPeer(peer)
                         }, delay)
