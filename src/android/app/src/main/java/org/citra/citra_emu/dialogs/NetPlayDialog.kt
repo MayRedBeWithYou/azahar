@@ -14,6 +14,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.PopupMenu
+import android.net.wifi.p2p.WifiP2pDevice
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -31,6 +32,7 @@ import org.citra.citra_emu.databinding.DialogWifiDirectSearchingBinding
 import org.citra.citra_emu.databinding.ItemBanListBinding
 import org.citra.citra_emu.databinding.ItemButtonNetplayBinding
 import org.citra.citra_emu.databinding.ItemTextNetplayBinding
+import org.citra.citra_emu.databinding.ItemWifiDirectPeerBinding
 import org.citra.citra_emu.dialogs.ChatDialog
 import org.citra.citra_emu.utils.CompatUtils
 import org.citra.citra_emu.utils.GameHelper
@@ -143,14 +145,37 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
         val binding = DialogWifiDirectSearchingBinding.inflate(LayoutInflater.from(activity))
         dialog.setContentView(binding.root)
 
+        val peerAdapter = WifiDirectPeerAdapter { device ->
+            wifiDirectManager.connectToSelectedPeer(device)
+        }
+        binding.recyclerPeers.layoutManager = LinearLayoutManager(activity)
+        binding.recyclerPeers.adapter = peerAdapter
+
         var connectionSucceeded = false
 
         wifiDirectManager.listener = object : WifiDirectManager.Listener {
             override fun onSearching() {
+                binding.progress.visibility = View.VISIBLE
+                binding.recyclerPeers.visibility = View.GONE
                 binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_searching)
             }
 
+            override fun onPeersFound(peers: List<WifiP2pDevice>) {
+                if (peers.isEmpty()) {
+                    binding.progress.visibility = View.VISIBLE
+                    binding.recyclerPeers.visibility = View.GONE
+                    binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_searching)
+                } else {
+                    binding.progress.visibility = View.GONE
+                    binding.recyclerPeers.visibility = View.VISIBLE
+                    binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_select_peer)
+                    peerAdapter.submitList(peers)
+                }
+            }
+
             override fun onConnecting(peerName: String) {
+                binding.recyclerPeers.visibility = View.GONE
+                binding.progress.visibility = View.VISIBLE
                 binding.textStatus.text = activity.getString(R.string.multiplayer_wifi_direct_connecting, peerName)
             }
 
@@ -542,5 +567,30 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
             }
         }
 
+    }
+
+    private class WifiDirectPeerAdapter(
+        private val onPeerSelected: (WifiP2pDevice) -> Unit
+    ) : RecyclerView.Adapter<WifiDirectPeerAdapter.ViewHolder>() {
+
+        private var peers: List<WifiP2pDevice> = emptyList()
+
+        class ViewHolder(val binding: ItemWifiDirectPeerBinding) : RecyclerView.ViewHolder(binding.root)
+
+        fun submitList(newPeers: List<WifiP2pDevice>) {
+            peers = newPeers
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder =
+            ViewHolder(ItemWifiDirectPeerBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val device = peers[position]
+            holder.binding.itemPeerName.text = device.deviceName?.takeIf { it.isNotEmpty() } ?: device.deviceAddress
+            holder.binding.root.setOnClickListener { onPeerSelected(device) }
+        }
+
+        override fun getItemCount() = peers.size
     }
 }

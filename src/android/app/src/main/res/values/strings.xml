@@ -1014,6 +1014,7 @@
     <string name="multiplayer_wifi_direct_error">Wi-Fi Direct connection failed</string>
     <string name="multiplayer_wifi_direct_not_supported">Wi-Fi Direct is not supported on this device</string>
     <string name="multiplayer_wifi_direct_permission_needed">Wi-Fi permission required. Please grant it and try again.</string>
+    <string name="multiplayer_wifi_direct_select_peer">Select a device to connect</string>
 
     <!-- File Compression -->
     <string name="compress">Compress</string>

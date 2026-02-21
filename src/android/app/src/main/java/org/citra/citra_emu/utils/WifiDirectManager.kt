@@ -28,6 +28,7 @@ class WifiDirectManager(private val activity: Activity) {
 
     interface Listener {
         fun onSearching()
+        fun onPeersFound(peers: List<WifiP2pDevice>)
         fun onConnecting(peerName: String)
         fun onSettingUp(isHost: Boolean)
         fun onSuccess(isHost: Boolean)
@@ -44,8 +45,6 @@ class WifiDirectManager(private val activity: Activity) {
     private var isComplete = false
     private var retryCount = 0
     private var lastSeenPeer: WifiP2pDevice? = null
-    private var localDeviceAddress: String? = null
-    private var localDeviceName: String? = null
 
     private val timeoutHandler = Handler(Looper.getMainLooper())
     private var connectionTimeoutRunnable: Runnable? = null
@@ -143,26 +142,10 @@ class WifiDirectManager(private val activity: Activity) {
         channel = ch
         Log.debug("[WifiDirectManager] Channel initialized successfully, registering broadcast receiver")
 
-        // Fetch our own P2P MAC so we can use it as a deterministic tiebreaker when
-        // neither device is already a Group Owner (avoids simultaneous connect() calls).
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            manager.requestDeviceInfo(ch) { device ->
-                localDeviceAddress = device?.deviceAddress
-                localDeviceName = device?.deviceName
-                Log.debug("[WifiDirectManager] Local device info (requestDeviceInfo): address=$localDeviceAddress, name='$localDeviceName'")
-            }
-        }
-
         val filter = IntentFilter().apply {
             addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
             addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
-        }
-        // On API < 29 requestDeviceInfo is not available; this broadcast delivers our own
-        // device info including MAC address. Deprecated on API 29+ in favour of requestDeviceInfo.
-        @Suppress("DEPRECATION")
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            filter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
         }
         receiver = WifiDirectReceiver()
         ContextCompat.registerReceiver(activity, receiver!!, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -189,8 +172,6 @@ class WifiDirectManager(private val activity: Activity) {
         isConnecting = false
         retryCount = 0
         lastSeenPeer = null
-        localDeviceAddress = null
-        localDeviceName = null
         listener = null
         Log.debug("[WifiDirectManager] Unregistering broadcast receiver")
         try {
@@ -268,6 +249,22 @@ class WifiDirectManager(private val activity: Activity) {
         })
     }
 
+    /**
+     * Called by the UI when the user selects a peer from the list. Initiates the P2P connection.
+     * If both devices happen to select each other simultaneously, the BUSY handler on one side
+     * will wait passively for the other's connection to complete.
+     */
+    @SuppressLint("MissingPermission")
+    fun connectToSelectedPeer(device: WifiP2pDevice) {
+        Log.info("[WifiDirectManager] connectToSelectedPeer: name='${device.deviceName}', ${stateSnapshot()}")
+        if (isConnecting || isComplete) {
+            Log.debug("[WifiDirectManager] connectToSelectedPeer: already connecting or complete, ignoring")
+            return
+        }
+        lastSeenPeer = device
+        connectToPeer(device)
+    }
+
     private fun onGroupFormed(isGroupOwner: Boolean, groupOwnerAddress: String) {
         Log.info("[WifiDirectManager] onGroupFormed: isGroupOwner=$isGroupOwner, groupOwnerAddress=$groupOwnerAddress, ${stateSnapshot()}")
         if (isComplete) {
@@ -311,47 +308,6 @@ class WifiDirectManager(private val activity: Activity) {
         }.start()
     }
 
-    /**
-     * Decides whether this device should wait passively for [peer] to initiate the P2P
-     * connection, rather than calling connect() itself.
-     *
-     * Returns true  → we wait (peer will call connect() on its side).
-     * Returns false → we initiate (we call connect()).
-     *
-     * The chain:
-     *  1. MAC comparison — most precise; skipped if our MAC is the redacted "02:00:00:00:00:00"
-     *     placeholder (some Android versions return this when the real P2P MAC is unavailable).
-     *  2. Device-name comparison — names are never redacted and are consistent across both
-     *     sides (requestDeviceInfo() returns the same name the peer sees in requestPeers()).
-     *  3. Fallback: initiate unconditionally; BUSY handling resolves any collision.
-     *
-     * Both devices apply the same rule independently. As long as their identifiers differ,
-     * exactly one device returns true (waits) and the other returns false (initiates).
-     */
-    private fun shouldWaitForPeer(peer: WifiP2pDevice): Boolean {
-        // --- 1. MAC tiebreaker ---
-        val ourAddress = localDeviceAddress.takeIf { isUsableMac(it) }
-        if (ourAddress != null) {
-            val cmp = compareMac(ourAddress, peer.deviceAddress)
-            Log.debug("[WifiDirectManager] shouldWaitForPeer: MAC ours=$ourAddress peer=${peer.deviceAddress} cmp=$cmp")
-            return cmp < 0  // lower MAC waits
-        }
-        Log.debug("[WifiDirectManager] shouldWaitForPeer: MAC unavailable/redacted (raw=$localDeviceAddress), trying name")
-
-        // --- 2. Device-name tiebreaker ---
-        val ourName = localDeviceName?.takeIf { it.isNotEmpty() }
-        val peerName = peer.deviceName?.takeIf { it.isNotEmpty() }
-        if (ourName != null && peerName != null && ourName != peerName) {
-            val cmp = ourName.compareTo(peerName)
-            Log.debug("[WifiDirectManager] shouldWaitForPeer: name ours='$ourName' peer='$peerName' cmp=$cmp")
-            return cmp < 0  // lexicographically lower name waits
-        }
-        Log.warning("[WifiDirectManager] shouldWaitForPeer: name unavailable or identical (ours='$ourName' peer='$peerName') — initiating, BUSY will resolve any collision")
-
-        // --- 3. Fallback: initiate ---
-        return false
-    }
-
     private inner class WifiDirectReceiver : BroadcastReceiver() {
         @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES])
         override fun onReceive(context: Context, intent: Intent) {
@@ -369,18 +325,10 @@ class WifiDirectManager(private val activity: Activity) {
                         else Log.debug("[WifiDirectManager] P2P disabled but isComplete=true, suppressing error")
                     }
                 }
-                @Suppress("DEPRECATION")
-                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
-                    @Suppress("DEPRECATION")
-                    val device = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
-                    localDeviceAddress = device?.deviceAddress
-                    localDeviceName = device?.deviceName
-                    Log.debug("[WifiDirectManager] Local device info updated (broadcast): address=$localDeviceAddress, name='$localDeviceName'")
-                }
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                     Log.debug("[WifiDirectManager] Peers changed broadcast received — isConnecting=$isConnecting")
-                    if (isConnecting) {
-                        Log.debug("[WifiDirectManager] Already connecting, ignoring peers changed event")
+                    if (isConnecting || isComplete) {
+                        Log.debug("[WifiDirectManager] Already connecting or complete, ignoring peers changed event")
                         return
                     }
                     val ch = channel
@@ -397,47 +345,20 @@ class WifiDirectManager(private val activity: Activity) {
                                 "primaryDeviceType=${p.primaryDeviceType}")
                         }
 
-                        // Prefer an existing Group Owner so that a 3rd device joins the
-                        // already-formed group rather than creating a separate one with a GC.
-                        val goCandidate = peers.firstOrNull { it.isGroupOwner }
-                        val anyCandidate = peers.firstOrNull()
-                        val peer = goCandidate ?: anyCandidate ?: run {
-                            Log.debug("[WifiDirectManager] No peers to connect to, waiting for next update")
+                        // If a peer is in INVITED state, this device received an inbound connection
+                        // invitation from the other side. Transition to connecting state immediately
+                        // so the UI stops showing the peer list and the user cannot tap another device.
+                        val invitedPeer = peers.firstOrNull { it.status == WifiP2pDevice.INVITED }
+                        if (invitedPeer != null) {
+                            Log.info("[WifiDirectManager] Detected INVITED peer '${invitedPeer.deviceName}' — inbound invitation, entering connecting state")
+                            lastSeenPeer = invitedPeer
+                            isConnecting = true
+                            listener?.onConnecting(invitedPeer.deviceName ?: "another device")
+                            scheduleConnectionTimeout()
                             return@requestPeers
                         }
 
-                        if (goCandidate != null) {
-                            Log.info("[WifiDirectManager] Selected Group Owner peer: '${peer.deviceName}'")
-                        } else {
-                            Log.info("[WifiDirectManager] No Group Owner found, selected first available peer: '${peer.deviceName}'")
-                        }
-
-                        lastSeenPeer = peer
-                        if (!isConnecting && !isComplete) {
-                            if (peer.isGroupOwner) {
-                                // Always connect unconditionally to an existing Group Owner —
-                                // there is no collision risk since we are not racing for GO role.
-                                Log.info("[WifiDirectManager] Peer is already GO — scheduling connect in ${PEER_CONNECT_DELAY_MS}ms")
-                                timeoutHandler.postDelayed({
-                                    if (!isConnecting && !isComplete) connectToPeer(peer)
-                                }, PEER_CONNECT_DELAY_MS)
-                            } else {
-                                // Neither device is a GO yet. Use a deterministic tiebreaker so
-                                // only one side calls connect(), eliminating the simultaneous-connect
-                                // race entirely. See shouldWaitForPeer() for the full chain.
-                                if (shouldWaitForPeer(peer)) {
-                                    Log.info("[WifiDirectManager] Tiebreaker: waiting passively for peer '${peer.deviceName}' to initiate")
-                                    isConnecting = true
-                                    listener?.onConnecting(peer.deviceName ?: "another device")
-                                    scheduleConnectionTimeout()
-                                } else {
-                                    Log.info("[WifiDirectManager] Tiebreaker: we initiate — scheduling connect in ${PEER_CONNECT_DELAY_MS}ms")
-                                    timeoutHandler.postDelayed({
-                                        if (!isConnecting && !isComplete) connectToPeer(peer)
-                                    }, PEER_CONNECT_DELAY_MS)
-                                }
-                            }
-                        }
+                        listener?.onPeersFound(peers)
                     }
                 }
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
@@ -501,25 +422,6 @@ class WifiDirectManager(private val activity: Activity) {
         private const val CONNECTION_TIMEOUT_MS = 30_000L
         private const val MAX_RETRIES = 3
         private const val RETRY_DELAY_MS = 1_000L
-        private const val PEER_CONNECT_DELAY_MS = 2_000L
-
-        /**
-         * Returns true if [address] is a real, usable P2P MAC address.
-         * "02:00:00:00:00:00" is returned by some Android versions as a redacted placeholder
-         * when the actual P2P MAC cannot be exposed (permission edge-cases, firmware quirks).
-         * Using it for comparisons would make every device appear "lower" than any real MAC.
-         */
-        private fun isUsableMac(address: String?): Boolean =
-            !address.isNullOrEmpty() && address.uppercase() != "02:00:00:00:00:00"
-
-        /**
-         * Compares two Wi-Fi P2P MAC addresses numerically (e.g. "AA:BB:CC:DD:EE:FF").
-         * Returns negative if [a] < [b], positive if [a] > [b], 0 if equal.
-         */
-        private fun compareMac(a: String, b: String): Int {
-            val normalize = { mac: String -> mac.uppercase().replace(":", "").replace("-", "") }
-            return normalize(a).compareTo(normalize(b))
-        }
 
         private fun reasonName(reason: Int): String = when (reason) {
             WifiP2pManager.ERROR -> "ERROR"
