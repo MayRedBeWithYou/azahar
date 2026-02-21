@@ -49,6 +49,12 @@ class NetPlayDialog(context: Context) : BottomSheetDialog(context) {
         // for the duration of the multiplayer session, which outlasts the connection dialog.
         // Cleared (and the group torn down) when the user leaves the lobby.
         private var activeWifiDirectManager: WifiDirectManager? = null
+
+        /** Call from the host Activity's onDestroy to ensure the Wi-Fi Direct group is torn down. */
+        fun stopWifiDirect() {
+            activeWifiDirectManager?.stop()
+            activeWifiDirectManager = null
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

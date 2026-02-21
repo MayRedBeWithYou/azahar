@@ -180,6 +180,7 @@ class EmulationActivity : AppCompatActivity() {
         instance = null
         secondaryDisplay.releasePresentation()
         secondaryDisplay.releaseVD()
+        NetPlayDialog.stopWifiDirect()
 
         super.onDestroy()
     }

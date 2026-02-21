@@ -93,16 +93,21 @@ class WifiDirectManager(private val activity: Activity) {
             listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
             return
         }
-        manager?.discoverPeers(ch, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                Log.debug("[WifiDirectManager] Re-discovery started successfully")
-            }
+        try {
+            manager?.discoverPeers(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    Log.debug("[WifiDirectManager] Re-discovery started successfully")
+                }
 
-            override fun onFailure(reason: Int) {
-                Log.error("[WifiDirectManager] Re-discovery failed (reason=$reason / ${reasonName(reason)}), ${stateSnapshot()}")
-                listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
-            }
-        })
+                override fun onFailure(reason: Int) {
+                    Log.error("[WifiDirectManager] Re-discovery failed (reason=$reason / ${reasonName(reason)}), ${stateSnapshot()}")
+                    listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+                }
+            })
+        } catch (e: SecurityException) {
+            Log.error("[WifiDirectManager] retryDiscovery: SecurityException — $e")
+            listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+        }
     }
 
     fun hasPermission(): Boolean {
@@ -151,23 +156,46 @@ class WifiDirectManager(private val activity: Activity) {
         ContextCompat.registerReceiver(activity, receiver!!, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         Log.debug("[WifiDirectManager] Broadcast receiver registered for P2P_STATE, P2P_PEERS, P2P_CONNECTION actions")
 
-        Log.info("[WifiDirectManager] Starting peer discovery")
-        manager.discoverPeers(ch, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                Log.info("[WifiDirectManager] Peer discovery started successfully")
-                listener?.onSearching()
-            }
+        // Check for a pre-existing group first (e.g. established by the OS before the emulator
+        // was launched). If one is found, skip discovery entirely and set up the room directly.
+        Log.info("[WifiDirectManager] Checking for pre-existing Wi-Fi Direct group")
+        manager.requestConnectionInfo(ch) { info ->
+            if (isComplete) return@requestConnectionInfo
+            if (info.groupFormed) {
+                Log.info("[WifiDirectManager] Pre-existing group detected — skipping discovery")
+                val hostAddress = info.groupOwnerAddress?.hostAddress
+                if (hostAddress == null) {
+                    Log.warning("[WifiDirectManager] Pre-existing group but groupOwnerAddress is null, falling back to default $WIFI_DIRECT_HOST_IP")
+                }
+                onGroupFormed(info.isGroupOwner, hostAddress ?: WIFI_DIRECT_HOST_IP)
+            } else {
+                Log.info("[WifiDirectManager] No existing group, starting peer discovery")
+                try {
+                    manager.discoverPeers(ch, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() {
+                            Log.info("[WifiDirectManager] Peer discovery started successfully")
+                            listener?.onSearching()
+                        }
 
-            override fun onFailure(reason: Int) {
-                Log.error("[WifiDirectManager] Peer discovery failed (reason=$reason / ${reasonName(reason)})")
-                listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+                        override fun onFailure(reason: Int) {
+                            Log.error("[WifiDirectManager] Peer discovery failed (reason=$reason / ${reasonName(reason)})")
+                            listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+                        }
+                    })
+                } catch (e: SecurityException) {
+                    Log.error("[WifiDirectManager] startDiscovery: SecurityException — $e")
+                    listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+                }
             }
-        })
+        }
     }
 
     fun stop() {
         Log.info("[WifiDirectManager] stop() called — ${stateSnapshot()}")
         cancelConnectionTimeout()
+        // Drain ALL pending callbacks (retry runnables, deferred connects, etc.) to ensure
+        // nothing fires against a closed channel after teardown.
+        timeoutHandler.removeCallbacksAndMessages(null)
         isComplete = true
         isConnecting = false
         retryCount = 0
@@ -225,28 +253,34 @@ class WifiDirectManager(private val activity: Activity) {
             listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
             return
         }
-        manager?.connect(ch, config, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                Log.debug("[WifiDirectManager] Connect request sent and accepted by framework, awaiting group formation")
-                scheduleConnectionTimeout()
-            }
-
-            override fun onFailure(reason: Int) {
-                Log.error("[WifiDirectManager] Failed to connect to peer (reason=$reason / ${reasonName(reason)}), ${stateSnapshot()}")
-                if (reason == WifiP2pManager.BUSY) {
-                    // The peer already initiated connection to us. Stay in connecting state and
-                    // wait passively — WIFI_P2P_CONNECTION_CHANGED_ACTION will fire when the
-                    // group forms. The connection timeout acts as a safety net.
-                    Log.info("[WifiDirectManager] Connect BUSY — peer likely already initiated connection to us, waiting passively for group formation")
+        try {
+            manager?.connect(ch, config, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    Log.debug("[WifiDirectManager] Connect request sent and accepted by framework, awaiting group formation")
                     scheduleConnectionTimeout()
-                } else {
-                    Log.error("[WifiDirectManager] Non-recoverable connect failure, reporting error")
-                    cancelConnectionTimeout()
-                    isConnecting = false
-                    listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
                 }
-            }
-        })
+
+                override fun onFailure(reason: Int) {
+                    Log.error("[WifiDirectManager] Failed to connect to peer (reason=$reason / ${reasonName(reason)}), ${stateSnapshot()}")
+                    if (reason == WifiP2pManager.BUSY) {
+                        // The peer already initiated connection to us. Stay in connecting state and
+                        // wait passively — WIFI_P2P_CONNECTION_CHANGED_ACTION will fire when the
+                        // group forms. The connection timeout acts as a safety net.
+                        Log.info("[WifiDirectManager] Connect BUSY — peer likely already initiated connection to us, waiting passively for group formation")
+                        scheduleConnectionTimeout()
+                    } else {
+                        Log.error("[WifiDirectManager] Non-recoverable connect failure, reporting error")
+                        cancelConnectionTimeout()
+                        isConnecting = false
+                        listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+                    }
+                }
+            })
+        } catch (e: SecurityException) {
+            Log.error("[WifiDirectManager] connectToPeer: SecurityException — $e")
+            isConnecting = false
+            listener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+        }
     }
 
     /**
@@ -283,25 +317,32 @@ class WifiDirectManager(private val activity: Activity) {
 
         Thread {
             Log.debug("[WifiDirectManager] NetPlay thread started")
-            val result = if (isGroupOwner) {
-                val roomName = activity.getString(R.string.multiplayer_default_room_name, username)
-                Log.info("[WifiDirectManager] Creating room as host: name='$roomName', address=$groupOwnerAddress, port=$port, maxPlayers=$MAX_PLAYERS")
-                NetPlayManager.netPlayCreateRoom(
-                    groupOwnerAddress, port, username,
-                    WIFI_DIRECT_GAME_NAME, 0L, "", roomName, MAX_PLAYERS
-                )
-            } else {
-                Log.info("[WifiDirectManager] Joining room as client: host=$groupOwnerAddress, port=$port, username='$username'")
-                NetPlayManager.netPlayJoinRoom(groupOwnerAddress, port, username, "")
-            }
-            Log.info("[WifiDirectManager] NetPlay ${if (isGroupOwner) "createRoom" else "joinRoom"} returned: $result")
-
-            activity.runOnUiThread {
-                if (result == NetPlayManager.NetPlayStatus.NO_ERROR) {
-                    Log.info("[WifiDirectManager] Room ${if (isGroupOwner) "created" else "joined"} successfully, notifying listener")
-                    pendingListener?.onSuccess(isGroupOwner)
+            try {
+                val result = if (isGroupOwner) {
+                    val roomName = activity.getString(R.string.multiplayer_default_room_name, username)
+                    Log.info("[WifiDirectManager] Creating room as host: name='$roomName', address=$groupOwnerAddress, port=$port, maxPlayers=$MAX_PLAYERS")
+                    NetPlayManager.netPlayCreateRoom(
+                        groupOwnerAddress, port, username,
+                        WIFI_DIRECT_GAME_NAME, 0L, "", roomName, MAX_PLAYERS
+                    )
                 } else {
-                    Log.error("[WifiDirectManager] Room ${if (isGroupOwner) "creation" else "join"} failed (status=$result), notifying error")
+                    Log.info("[WifiDirectManager] Joining room as client: host=$groupOwnerAddress, port=$port, username='$username'")
+                    NetPlayManager.netPlayJoinRoom(groupOwnerAddress, port, username, "")
+                }
+                Log.info("[WifiDirectManager] NetPlay ${if (isGroupOwner) "createRoom" else "joinRoom"} returned: $result")
+
+                activity.runOnUiThread {
+                    if (result == NetPlayManager.NetPlayStatus.NO_ERROR) {
+                        Log.info("[WifiDirectManager] Room ${if (isGroupOwner) "created" else "joined"} successfully, notifying listener")
+                        pendingListener?.onSuccess(isGroupOwner)
+                    } else {
+                        Log.error("[WifiDirectManager] Room ${if (isGroupOwner) "creation" else "join"} failed (status=$result), notifying error")
+                        pendingListener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.error("[WifiDirectManager] NetPlay setup thread threw an exception: $e")
+                activity.runOnUiThread {
                     pendingListener?.onError(activity.getString(R.string.multiplayer_wifi_direct_error))
                 }
             }
@@ -337,6 +378,8 @@ class WifiDirectManager(private val activity: Activity) {
                         return
                     }
                     manager?.requestPeers(ch) { peerList ->
+                        // Guard against stop() running between requestPeers() dispatch and callback.
+                        if (isComplete) return@requestPeers
                         val peers = peerList.deviceList.toList()
                         Log.info("[WifiDirectManager] requestPeers result: ${peers.size} peer(s) found")
                         peers.forEachIndexed { i, p ->
