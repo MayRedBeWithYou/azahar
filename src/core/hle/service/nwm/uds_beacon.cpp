@@ -336,10 +336,10 @@ std::vector<u8> GenerateNintendoTaggedParameters(const NetworkInfo& network_info
     std::vector<u8> first_data_tag = GenerateNintendoFirstEncryptedDataTag(network_info, nodes);
     std::vector<u8> second_data_tag = GenerateNintendoSecondEncryptedDataTag(network_info, nodes);
 
+    buffer.insert(buffer.begin(), probe_tag.begin(), probe_tag.end());
     buffer.insert(buffer.end(), network_info_tag.begin(), network_info_tag.end());
     buffer.insert(buffer.end(), first_data_tag.begin(), first_data_tag.end());
     buffer.insert(buffer.end(), second_data_tag.begin(), second_data_tag.end());
-    buffer.insert(buffer.end(), probe_tag.begin(), probe_tag.end());
 
     return buffer;
 }
