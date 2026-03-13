@@ -24,6 +24,7 @@ add_library(citra-android SHARED
     id_cache.h
     multiplayer.cpp
     multiplayer.h
+    jni_setting_keys.cpp
     native.cpp
     ndk_motion.cpp
     ndk_motion.h

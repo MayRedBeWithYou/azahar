@@ -374,7 +374,7 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
             }
 
             if (!BuildUtil.isGooglePlayBuild) {
-                if (NativeLibrary.getUserDirectory(result) == "") {
+                if (NativeLibrary.getNativePath(result) == "") {
                     SelectUserDirectoryDialogFragment.newInstance(
                         this,
                         R.string.invalid_selection,
